@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHANTOM_WAVE // TAKI ZAIDI</title>
+    <style>
+        :root {
+            --primary: #00ff41;
+            --bg: #0d0d0d;
+            --glass: rgba(0, 255, 65, 0.1);
+            --scanline: rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--primary);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* CRT Effect */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: repeating-linear-gradient(
+                0deg,
+                var(--scanline),
+                var(--scanline) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 999;
+            opacity: 0.3;
+        }
+
+        h1 {
+            text-shadow: 0 0 10px var(--primary);
+            letter-spacing: 5px;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            width: 100%;
+            max-width: 1100px;
+            margin-top: 30px;
+            z-index: 10;
+        }
+
+        .terminal {
+            border: 1px solid var(--primary);
+            background: rgba(0, 20, 0, 0.9);
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);
+            position: relative;
+        }
+
+        .terminal::before {
+            content: "ENCRYPT_MODE";
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: var(--bg);
+            padding: 0 10px;
+            font-weight: bold;
+        }
+
+        #decoder-term::before {
+            content: "DECRYPT_MODE";
+        }
+
+        canvas {
+            width: 100%;
+            background: #000;
+            border: 1px dashed var(--primary);
+            margin: 15px 0;
+            image-rendering: pixelated;
+        }
+
+        button, .file-upload {
+            background: black;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 15px;
+            width: 100%;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: 0.3s;
+            margin-bottom: 10px;
+            display: block;
+            text-align: center;
+        }
+
+        button:hover, .file-upload:hover {
+            background: var(--primary);
+            color: black;
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .log-box {
+            height: 120px;
+            overflow-y: auto;
+            border-top: 1px solid var(--primary);
+            margin-top: 15px;
+            padding-top: 10px;
+            font-size: 0.8rem;
+            color: #00aa22;
+        }
+
+        .log-line { margin-bottom: 5px; }
+        .blink { animation: blink 1s infinite; }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
+        footer {
+            margin-top: 50px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+            text-shadow: 0 0 5px var(--primary);
+            z-index: 10;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1><span class="blink">></span> SONIC_CIPHER PROTOCOL</h1>
+
+    <div class="container">
+        
+        <div class="terminal" id="encoder-term">
+            <h2>// ENCODER</h2>
+            <p>> CONVERT VISUAL DATA TO SOUND WAVES</p>
+            
+            <label class="file-upload">
+                [ SELECT TARGET PHOTO ]
+                <input type="file" id="imgInput" accept="image/*">
+            </label>
+
+            <canvas id="encCanvas" width="500" height="300"></canvas>
+            
+            <button onclick="encodeImage()">INITIALIZE ENCRYPTION</button>
+            <a id="downloadLink" style="display:none"></a>
+            
+            <div class="log-box" id="encLog">
+                <div class="log-line">> SYSTEM READY...</div>
+            </div>
+        </div>
+
+        <div class="terminal" id="decoder-term">
+            <h2>// DECODER</h2>
+            <p>> RECONSTRUCT VISUALS FROM AUDIO</p>
+            
+            <label class="file-upload">
+                [ UPLOAD AUDIO DATA ]
+                <input type="file" id="audioInput" accept=".wav, audio/wav">
+            </label>
+
+            <canvas id="decCanvas" width="500" height="300"></canvas>
+            
+            <button onclick="decodeAudio()">START DECRYPTION SEQUENCE</button>
+            <button onclick="saveImage()" id="saveBtn" style="display:none;">SAVE DECRYPTED IMAGE</button>
+            
+            <div class="log-box" id="decLog">
+                <div class="log-line">> WAITING FOR SIGNAL...</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        SECURE TERMINAL // ARCHITECT: TAKI ZAIDI // 2024
+    </footer>
+
+    <script>
+        // --- UTILITIES ---
+        const log = (id, msg) => {
+            const box = document.getElementById(id);
+            box.innerHTML += `<div class="log-line">> ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        };
+
+        const FIXED_WIDTH = 500; // Standard width for encoding/decoding consistency
+
+        // --- ENCODER (IMG -> WAV) ---
+        const imgInput = document.getElementById('imgInput');
+        const encCanvas = document.getElementById('encCanvas');
+        const encCtx = encCanvas.getContext('2d');
+        let currentImgData = null;
+
+        imgInput.addEventListener('change', (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Resize logic to keep file size manageable and width consistent
+                    const aspectRatio = img.height / img.width;
+                    const newHeight = Math.round(FIXED_WIDTH * aspectRatio);
+                    
+                    encCanvas.width = FIXED_WIDTH;
+                    encCanvas.height = newHeight;
+                    
+                    encCtx.drawImage(img, 0, 0, FIXED_WIDTH, newHeight);
+                    currentImgData = encCtx.getImageData(0, 0, FIXED_WIDTH, newHeight);
+                    log('encLog', `IMAGE LOADED: ${FIXED_WIDTH}x${newHeight}px`);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        function encodeImage() {
+            if (!currentImgData) {
+                log('encLog', 'ERROR: NO IMAGE DETECTED.');
+                return;
+            }
+
+            log('encLog', 'PARSING PIXEL DATA...');
+            
+            // 1. Convert Pixels to Audio Samples
+            // Structure: R, G, B, A, R, G, B, A...
+            // We convert 0-255 byte to 16-bit PCM amplitude
+            const rawData = currentImgData.data;
+            const numSamples = rawData.length;
+            const wavData = new Int16Array(numSamples + 2); // +2 for storing dimensions
+
+            // Header Hack: Store Height in first 2 samples so decoder knows when to stop
+            // We assume width is FIXED_WIDTH (500)
+            wavData[0] = encCanvas.height; 
+            wavData[1] = FIXED_WIDTH; 
+
+            for (let i = 0; i < numSamples; i++) {
+                // Map 0-255 (Uint8) to -32768 to 32767 (Int16)
+                // Formula: (Byte - 128) * 256
+                wavData[i+2] = (rawData[i] - 128) * 256;
+            }
+
+            log('encLog', 'GENERATING WAVEFORM HEADERS...');
+            const wavBlob = createWavFile(wavData);
+            
+            const url = URL.createObjectURL(wavBlob);
+            const link = document.getElementById('downloadLink');
+            link.href = url;
+            link.download = `encrypted_data_${Date.now()}.wav`;
+            link.click();
+            
+            log('encLog', 'SUCCESS: AUDIO FILE EXPORTED.');
+            log('encLog', 'WARNING: DO NOT COMPRESS TO MP3 (DATA LOSS).');
+        }
+
+        // --- DECODER (WAV -> IMG) ---
+        const audioInput = document.getElementById('audioInput');
+        const decCanvas = document.getElementById('decCanvas');
+        const decCtx = decCanvas.getContext('2d');
+        let audioBuffer = null;
+
+        audioInput.addEventListener('change', (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                audioBuffer = event.target.result;
+                log('decLog', 'AUDIO DATA BUFFERED.');
+                log('decLog', `SIZE: ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`);
+            };
+            reader.readAsArrayBuffer(e.target.files[0]);
+        });
+
+        function decodeAudio() {
+            if (!audioBuffer) {
+                log('decLog', 'ERROR: NO AUDIO DATA.');
+                return;
+            }
+
+            // Parse WAV
+            // Skip 44 bytes (standard WAV header)
+            const dataView = new DataView(audioBuffer);
+            const samples = new Int16Array(audioBuffer.byteLength - 44);
+            
+            // Convert bytes back to samples (naive approach, assumes 16bit mono)
+            // Real WAV parsing is complex, we assume the file was made by our encoder
+            // 44 bytes header = 22 int16s
+            const headerOffset = 44; 
+            
+            if(audioBuffer.byteLength < 50) {
+                 log('decLog', 'ERROR: FILE CORRUPTED OR TOO SMALL.');
+                 return;
+            }
+
+            // Read Dimensions from first 2 samples (if encoded by us)
+            // Note: Little Endian
+            const height = dataView.getInt16(headerOffset, true); // Stored in first sample slot
+            // const width = dataView.getInt16(headerOffset + 2, true); // Stored in second
+            
+            // Sanity check dimensions, if crazy, fallback
+            let renderWidth = FIXED_WIDTH;
+            let renderHeight = height;
+            
+            if (height < 1 || height > 5000) {
+                 log('decLog', 'WARNING: HEADER DATA NOT FOUND. USING RAW DECODE.');
+                 renderHeight = 300; // Fallback
+            } else {
+                 log('decLog', `DETECTED DIMENSIONS: ${renderWidth}x${renderHeight}`);
+            }
+
+            decCanvas.width = renderWidth;
+            decCanvas.height = renderHeight;
+            decCtx.fillStyle = '#000';
+            decCtx.fillRect(0,0, renderWidth, renderHeight);
+
+            const imgData = decCtx.createImageData(renderWidth, renderHeight);
+            const pixels = imgData.data;
+
+            // Start Animation Loop
+            let sampleIndex = 2; // Skip the 2 dimension samples
+            let pixelIndex = 0;
+            const totalSamples = (audioBuffer.byteLength - 44) / 2; // 2 bytes per sample
+            
+            log('decLog', 'INITIATING VISUAL RECONSTRUCTION...');
+            document.getElementById('saveBtn').style.display = 'none';
+
+            function renderChunk() {
+                // Process N pixels per frame (speed)
+                const speed = 2000; 
+                
+                for (let i = 0; i < speed; i++) {
+                    if (sampleIndex >= totalSamples || pixelIndex >= pixels.length) {
+                        decCtx.putImageData(imgData, 0, 0);
+                        log('decLog', 'DECRYPTION COMPLETE.');
+                        document.getElementById('saveBtn').style.display = 'block';
+                        return;
+                    }
+
+                    // Read 16-bit PCM
+                    // Offset = 44 header bytes + (sampleIndex * 2 bytes per sample)
+                    const sample = dataView.getInt16(headerOffset + (sampleIndex * 2), true);
+                    
+                    // Convert back to 0-255 Byte
+                    // Formula: (Sample / 256) + 128
+                    let val = Math.floor((sample / 256) + 128);
+                    
+                    // Clamp
+                    if (val < 0) val = 0;
+                    if (val > 255) val = 255;
+
+                    pixels[pixelIndex] = val;
+                    
+                    pixelIndex++;
+                    sampleIndex++;
+                }
+
+                // Draw current state to canvas
+                decCtx.putImageData(imgData, 0, 0);
+                
+                // Draw scanline
+                const currentY = Math.floor((pixelIndex / 4) / renderWidth);
+                decCtx.fillStyle = '#0f0';
+                decCtx.fillRect(0, currentY, renderWidth, 2);
+
+                requestAnimationFrame(renderChunk);
+            }
+
+            renderChunk();
+        }
+        
+        function saveImage() {
+            const link = document.createElement('a');
+            link.download = 'decrypted_visual.png';
+            link.href = decCanvas.toDataURL();
+            link.click();
+        }
+
+        // --- WAV HELPER FUNCTIONS ---
+        function createWavFile(samples) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            // RIFF chunk descriptor
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + samples.length * 2, true);
+            writeString(view, 8, 'WAVE');
+
+            // fmt sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, 44100, true); // Sample Rate
+            view.setUint32(28, 44100 * 2, true); // Byte Rate
+            view.setUint16(32, 2, true); // Block Align
+            view.setUint16(34, 16, true); // Bits per sample
+
+            // data sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+
+            // Write PCM samples
+            let offset = 44;
+            for (let i = 0; i < samples.length; i++) {
+                view.setInt16(offset, samples[i], true);
+                offset += 2;
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+    </script>
+</body>
+</html>
